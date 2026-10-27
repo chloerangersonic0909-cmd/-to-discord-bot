@@ -46,7 +46,7 @@ function requireAdmin(req, res, next) {
   if (req.session?.role !== 'admin') return res.status(403).json({ error: 'ต้องใช้สิทธิ์ผู้ดูแลระบบ' });
   next();
 }
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'TO Discord BOT API', time: new Date().toISOString() }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, status: 'ok', service: 'discord-โปรโมท API', time: new Date().toISOString() }));
 
 app.post('/api/auth/register', async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 60);
@@ -115,6 +115,121 @@ app.delete('/api/bots/:id', requireAuth, async (req, res) => {
   if (!result.changes) return res.status(404).json({ error: 'ไม่พบบอตนี้' });
   res.status(204).end();
 });
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('bot','server','video')),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    url TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS follows (
+    follower_id INTEGER NOT NULL,
+    followed_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(follower_id, followed_id),
+    FOREIGN KEY(follower_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(followed_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS post_likes (
+    user_id INTEGER NOT NULL,
+    post_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(user_id, post_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    post_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE
+  );
+`);
+const postShape = row => ({
+  id: String(row.id), type: row.type, title: row.title, body: row.body, url: row.url,
+  tags: JSON.parse(row.tags || '[]'), ownerId: String(row.user_id), owner: row.owner,
+  handle: '@' + String(row.owner || 'user').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24),
+  avatar: String(row.owner || 'U').slice(0, 1).toUpperCase(), verified: row.role === 'admin',
+  likes: Number(row.likes || 0), comments: Number(row.comments || 0), views: Number(row.views || 0),
+  following: Boolean(row.following), time: row.created_at
+});
+const postSelect = `
+ SELECT p.*, u.name AS owner, u.role,
+ (SELECT COUNT(*) FROM post_likes l WHERE l.post_id=p.id) AS likes,
+ (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) AS comments,
+ 0 AS views,
+ EXISTS(SELECT 1 FROM follows f WHERE f.followed_id=p.user_id AND f.follower_id=?) AS following
+ FROM posts p JOIN users u ON u.id=p.user_id
+`;
+app.get('/api/posts', async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 100);
+  const type = ['bot','server','video'].includes(req.query.type) ? req.query.type : null;
+  const userId = (() => { try { const h=req.headers.authorization||''; return h.startsWith('Bearer ')?Number(jwt.verify(h.slice(7),jwtSecret,{issuer:'to-discord-bot-api'}).sub):0; } catch { return 0; } })();
+  const clauses = [], params = [userId];
+  if (type) { clauses.push('p.type=?'); params.push(type); }
+  if (q) { clauses.push('(p.title LIKE ? OR p.body LIKE ? OR p.tags LIKE ?)'); params.push('%'+q+'%','%'+q+'%','%'+q+'%'); }
+  const rows = await db.all(postSelect + (clauses.length ? ' WHERE '+clauses.join(' AND ') : '') + ' ORDER BY p.id DESC LIMIT 100', ...params);
+  res.json({ posts: rows.map(postShape) });
+});
+app.post('/api/posts', requireAuth, async (req, res) => {
+  const type = String(req.body?.type || '');
+  const title = String(req.body?.title || '').trim().slice(0,100);
+  const body = String(req.body?.body || '').trim().slice(0,1500);
+  const url = String(req.body?.url || '').trim().slice(0,2048);
+  const tags = Array.isArray(req.body?.tags) ? req.body.tags : String(req.body?.tags || '').split(/[ ,]+/).filter(Boolean);
+  if (!['bot','server','video'].includes(type) || title.length < 2 || !body) return res.status(400).json({error:'กรอกประเภท หัวข้อ และรายละเอียดให้ครบ'});
+  if (url && !/^https:\/\//i.test(url)) return res.status(400).json({error:'ลิงก์ต้องเป็น HTTPS'});
+  const safeTags = [...new Set(tags.map(t=>String(t).replace(/^#/,'').replace(/[^\p{L}\p{N}_-]/gu,'').slice(0,30)).filter(Boolean))].slice(0,10).map(t=>'#'+t);
+  const result = await db.run('INSERT INTO posts(user_id,type,title,body,url,tags) VALUES(?,?,?,?,?,?)',Number(req.session.sub),type,title,body,url,JSON.stringify(safeTags));
+  const rows = await db.all(postSelect+' WHERE p.id=?',[Number(req.session.sub),result.lastID]);
+  res.status(201).json({post:postShape(rows[0])});
+});
+app.post('/api/posts/:id/like', requireAuth, async (req,res) => {
+  const postId=Number(req.params.id), userId=Number(req.session.sub);
+  const exists=await db.get('SELECT 1 FROM posts WHERE id=?',postId);
+  if(!exists)return res.status(404).json({error:'ไม่พบโพสต์'});
+  const liked=await db.get('SELECT 1 FROM post_likes WHERE user_id=? AND post_id=?',userId,postId);
+  if(liked) await db.run('DELETE FROM post_likes WHERE user_id=? AND post_id=?',userId,postId);
+  else await db.run('INSERT INTO post_likes(user_id,post_id) VALUES(?,?)',userId,postId);
+  const count=await db.get('SELECT COUNT(*) AS count FROM post_likes WHERE post_id=?',postId);
+  res.json({liked:!liked,likes:count.count});
+});
+app.post('/api/posts/:id/comments', requireAuth, async (req,res) => {
+  const postId=Number(req.params.id), body=String(req.body?.body||'').trim().slice(0,1000);
+  if(!body)return res.status(400).json({error:'กรอกความคิดเห็นก่อน'});
+  const post=await db.get('SELECT id FROM posts WHERE id=?',postId);
+  if(!post)return res.status(404).json({error:'ไม่พบโพสต์'});
+  const result=await db.run('INSERT INTO comments(user_id,post_id,body) VALUES(?,?,?)',Number(req.session.sub),postId,body);
+  const row=await db.get('SELECT c.id,c.body,c.created_at,u.name FROM comments c JOIN users u ON u.id=c.user_id WHERE c.id=?',result.lastID);
+  res.status(201).json({comment:{id:row.id,body:row.body,name:row.name,createdAt:row.created_at}});
+});
+app.get('/api/posts/:id/comments', async (req,res) => {
+  const rows=await db.all('SELECT c.id,c.body,c.created_at AS createdAt,u.name FROM comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? ORDER BY c.id ASC LIMIT 100',Number(req.params.id));
+  res.json({comments:rows});
+});
+app.post('/api/users/:id/follow', requireAuth, async (req,res) => {
+  const followerId=Number(req.session.sub), followedId=Number(req.params.id);
+  if(!Number.isInteger(followedId)||followedId===followerId)return res.status(400).json({error:'ไม่สามารถติดตามบัญชีนี้ได้'});
+  const target=await db.get('SELECT id FROM users WHERE id=?',followedId);
+  if(!target)return res.status(404).json({error:'ไม่พบบัญชีผู้ใช้'});
+  const exists=await db.get('SELECT 1 FROM follows WHERE follower_id=? AND followed_id=?',followerId,followedId);
+  if(exists)await db.run('DELETE FROM follows WHERE follower_id=? AND followed_id=?',followerId,followedId);
+  else await db.run('INSERT INTO follows(follower_id,followed_id) VALUES(?,?)',followerId,followedId);
+  res.json({following:!exists});
+});
+app.get('/api/me/follows', requireAuth, async (req,res) => {
+ const rows=await db.all('SELECT u.id,u.name FROM follows f JOIN users u ON u.id=f.followed_id WHERE f.follower_id=?',Number(req.session.sub));
+ res.json({users:rows.map(u=>({id:String(u.id),name:u.name}))});
+});
+
 app.get('/api/admin/users', requireAuth, requireAdmin, async (_req, res) => {
   const users = await db.all('SELECT id,name,email,role,plan,created_at AS createdAt FROM users ORDER BY id DESC LIMIT 200');
   res.json({ users });
