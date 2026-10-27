@@ -35,3 +35,18 @@ Backend ใช้ SQLite โดยค่าเริ่มต้น จึงต
 - เว็บไซต์: https://to-discord-bot.vercel.app
 - Repository: https://github.com/chloerangersonic0909-cmd/-to-discord-bot
 - ผู้พัฒนา: chloerangersonic0909@gmail.com
+
+
+## เข้าสู่ระบบด้วย Discord OAuth
+
+Backend ต้องตั้งค่า environment variables ต่อไปนี้ในผู้ให้บริการที่โฮสต์ API (ห้ามใส่ Client Secret ใน frontend หรือ GitHub):
+
+- `DISCORD_CLIENT_ID`: Application ID จาก Discord Developer Portal
+- `DISCORD_CLIENT_SECRET`: OAuth2 Client Secret จาก Discord Developer Portal
+- `DISCORD_REDIRECT_URI`: URL callback ของ Backend แบบเต็ม เช่น `https://<backend-domain>/api/auth/discord/callback`
+- `FRONTEND_URL`: `https://to-discord-bot.vercel.app`
+- `JWT_SECRET`, `DATABASE_PATH`, `CLIENT_ORIGIN`: ตั้งค่าตามหัวข้อ Backend ด้านบน
+
+ใน Discord Developer Portal → OAuth2 → Redirects ให้เพิ่มค่า `DISCORD_REDIRECT_URI` แบบตรงกันทุกตัวอักษร แล้วบันทึก จากนั้นตั้งค่า `VITE_API_URL` ใน GitHub Actions Variables เป็น URL ของ Backend และ deploy เว็บไซต์/APK ใหม่ ปุ่ม Discord OAuth จะทำงานได้เมื่อ Backend ออนไลน์และตั้งค่าครบแล้วเท่านั้น
+
+เส้นทาง OAuth ที่ Backend ใช้คือ `/api/auth/discord` และ `/api/auth/discord/callback`. เว็บไซต์ Vercel เป็นหน้าเว็บหลังเข้าสู่ระบบ ไม่ใช่ callback ของ Discord โดยตรง เว้นแต่จะเปลี่ยนสถาปัตยกรรมให้รองรับ callback บนเว็บไซต์
