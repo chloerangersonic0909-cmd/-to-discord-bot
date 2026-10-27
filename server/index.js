@@ -13,7 +13,7 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT || 3001);
 const jwtSecret = process.env.JWT_SECRET;
-const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',').map(v => v.trim());
+const allowedOrigins = [...new Set(['http://localhost:5173', 'http://localhost:4173', 'capacitor://localhost', 'https://localhost', ...(process.env.CLIENT_ORIGIN || '').split(',').map(v => v.trim()).filter(Boolean)])];
 if (!jwtSecret || jwtSecret.length < 32) {
   console.error('Configure JWT_SECRET with at least 32 random characters.');
   process.exit(1);
@@ -75,6 +75,23 @@ app.get('/api/me', requireAuth, async (req, res) => {
   const user = await db.get('SELECT id,name,email,role,created_at FROM users WHERE id = ?', Number(req.session.sub));
   if (!user) return res.status(401).json({ error: 'ไม่พบบัญชีผู้ใช้' });
   res.json({ user: publicUser(user) });
+});
+app.patch('/api/me', requireAuth, async (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 60);
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (name.length < 2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'กรอกชื่ออย่างน้อย 2 ตัวอักษรและอีเมลให้ถูกต้อง' });
+  }
+  try {
+    await db.run('UPDATE users SET name = ?, email = ? WHERE id = ?', name, email, Number(req.session.sub));
+    const user = await db.get('SELECT id,name,email,role,created_at FROM users WHERE id = ?', Number(req.session.sub));
+    if (!user) return res.status(404).json({ error: 'ไม่พบบัญชีผู้ใช้' });
+    res.json({ user: publicUser(user) });
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT') return res.status(409).json({ error: 'อีเมลนี้ถูกใช้งานแล้ว' });
+    console.error('profile update error:', err.message);
+    res.status(500).json({ error: 'บันทึกโปรไฟล์ไม่สำเร็จ' });
+  }
 });
 app.get('/api/bots', requireAuth, async (req, res) => {
   const bots = await db.all('SELECT id,name,discord_user_id AS discordUserId,created_at AS createdAt FROM bots WHERE user_id = ? ORDER BY id DESC', Number(req.session.sub));
