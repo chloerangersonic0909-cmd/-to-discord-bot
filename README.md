@@ -1,32 +1,37 @@
 # TO Discord BOT
 
-แอป Dashboard สำหรับจัดการโปรเจกต์ Discord Bot ออกแบบแบบ Mobile-first ด้วย React + Vite พร้อม Backend starter ด้วย Express และ SQLite
+แอป Dashboard สำหรับจัดการรายการ Discord Bot ออกแบบแบบ Mobile-first ด้วย React + Vite และ Android wrapper ผ่าน Capacitor พร้อม Backend API ด้วย Express และ SQLite
 
-## มีอะไรในโปรเจกต์นี้
-- หน้า Dashboard ภาพรวมและรายการบอตตัวอย่าง
-- หน้า บอตของฉัน, คำสั่งและโค้ด, กิจกรรม, การแจ้งเตือน, โปรไฟล์, การตั้งค่า และผู้ดูแลระบบ
-- ธีมมืด/สว่าง และเลือกสีหลัก
-- Responsive UI สำหรับมือถือและเดสก์ท็อป
-- Backend API starter: สมัครสมาชิก/เข้าสู่ระบบ, password hashing, JWT, รายการบอตแยกตามบัญชี และ endpoint ผู้ดูแลระบบ
-- Capacitor configuration สำหรับเตรียมทำ Android wrapper
+## ฟีเจอร์ที่มีในโปรเจกต์
 
-## สถานะปัจจุบัน
-**Frontend ยังเป็น UI prototype** รายการบอตและโปรไฟล์ในหน้าจอใช้ข้อมูลตัวอย่างและยังไม่ได้เชื่อมกับ API จริง ส่วน Backend เป็นโครงเริ่มต้นที่ต้อง deploy และตั้งค่า environment ก่อนใช้งานจริง
+- Dashboard แบบ Responsive สำหรับมือถือและเดสก์ท็อป
+- สมัครสมาชิก / เข้าสู่ระบบ ด้วย bcrypt และ JWT
+- เรียกคืนเซสชันขณะเปิดแท็บเดิม และออกจากระบบ
+- จัดเก็บรายการบอตแยกตามบัญชีผ่าน Backend API
+- เพิ่มและลบบอตจากบัญชีที่เข้าสู่ระบบ
+- แก้ไขชื่อและอีเมลโปรไฟล์ผ่าน Backend API
+- ธีมมืด/สว่าง สีหลัก และโหมดกระชับ
+- Android APK build ผ่าน GitHub Actions
 
-ยังไม่ได้ทำ APK และยังไม่มีการควบคุมบอตจริง, สถานะ Discord แบบสด, token vault, push notifications, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน หรือระบบกำหนด role admin แบบปลอดภัย
+## ข้อจำกัดที่ต้องทราบ
 
-> **ความปลอดภัย:** ห้ามใส่ Discord Bot Token ใน frontend, Git commit หรือ repository สาธารณะ ฟอร์มเพิ่มบอตปัจจุบันรับเฉพาะชื่อบอตและไม่ส่ง Token ไปที่ใด
+แอปนี้จัดการ **รายการและข้อมูลของบอต** แต่ยังไม่ได้รัน Discord bot process, อ่านสถานะออนไลน์แบบสด, จัดเก็บ/ใช้ Discord Bot Token, เชิญบอตเข้า Discord, push notifications, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน หรือระบบชำระเงินและบังคับแพ็กเกจ Free/Premium
 
-## รัน Frontend
-ต้องใช้ Node.js 20 ขึ้นไป
+ข้อมูลบอตตัวอย่างที่แสดงก่อนเข้าสู่ระบบเป็นข้อมูลจำลองเท่านั้น เมื่อเข้าสู่ระบบ รายการจะโหลดจาก Backend
 
-```bash
-npm install
-npm run dev
-```
+## สร้าง APK
 
-## รัน Backend API
-จากโฟลเดอร์โปรเจกต์:
+1. เปิดแท็บ [GitHub Actions](https://github.com/chloerangersonic0909-cmd/-to-discord-bot/actions)
+2. เลือก workflow **Build Android APK**
+3. กด **Run workflow** และรอให้ Job สำเร็จ
+4. เปิดรายการ run ที่สำเร็จ แล้วดาวน์โหลด Artifact ชื่อ **TO-Discord-BOT-debug-APK**
+5. แตกไฟล์ ZIP เพื่อรับไฟล์ `app-debug.apk`
+
+Artifact จาก GitHub Actions เก็บไว้ 14 วัน และเป็น **debug APK** ไม่ใช่ APK ที่เซ็นสำหรับเผยแพร่บน Play Store
+
+## ตั้งค่า Backend
+
+ต้องใช้ Node.js 20 ขึ้นไป และฐานข้อมูล SQLite แบบ persistent บนโฮสต์ที่รองรับแอป Node.js
 
 ```bash
 cd server
@@ -34,16 +39,27 @@ npm install
 cp .env.example .env
 ```
 
-แก้ `JWT_SECRET` ให้เป็น secret แบบสุ่มที่ยาวอย่างน้อย 32 ตัวอักษร และตั้ง `CLIENT_ORIGIN` เป็น URL ของ frontend จากนั้นรัน:
+ตั้งค่า `JWT_SECRET` ให้เป็นค่าสุ่มลับยาวอย่างน้อย 32 ตัวอักษร, ตั้ง `CLIENT_ORIGIN` เป็น URL frontend ที่ใช้งานจริง (คั่นหลาย origin ด้วย comma ได้) และตั้ง `DATABASE_PATH` ไปยังพื้นที่จัดเก็บที่ไม่ถูกลบเมื่อรีสตาร์ต จากนั้นรัน:
 
 ```bash
 npm start
 ```
 
-Health endpoint คือ `/api/health` และ API สมัคร/เข้าสู่ระบบจะส่ง JWT กลับมา ควรใช้ HTTPS และเก็บไฟล์ `.env` กับฐานข้อมูลให้ปลอดภัย
+ตรวจสุขภาพ API ได้ที่ `/api/health` ต้องเปิด HTTPS เมื่อใช้งานจริง และห้าม commit ไฟล์ `.env` หรือฐานข้อมูลขึ้น repository
 
-## เตรียม Android APK
-ต้องมี Android SDK / Android Studio และ build tools ในสภาพแวดล้อมที่รองรับ การสร้าง APK ยังไม่ได้ทำจากการเชื่อมต่อ GitHub นี้
+## เชื่อม APK กับ Backend
+
+ใน GitHub repository ไปที่ **Settings → Secrets and variables → Actions → Variables** แล้วเพิ่ม Repository variable ชื่อ `VITE_API_URL` เป็น URL HTTPS ของ Backend เช่น `https://api.example.com` จากนั้นเรียก workflow สร้าง APK ใหม่
+
+ถ้าไม่กำหนด `VITE_API_URL` แอปจะใช้ `http://localhost:3001` ซึ่งเหมาะกับการพัฒนาในเครื่องเท่านั้น และจะไม่ชี้ไปยัง Backend ที่ deploy อยู่เมื่อใช้ APK บนมือถือ
+
+## รัน Frontend ในเครื่อง
+
+```bash
+npm install
+npm run dev
+```
 
 ## Repository
+
 https://github.com/chloerangersonic0909-cmd/-to-discord-bot
