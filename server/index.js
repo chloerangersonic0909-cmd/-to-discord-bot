@@ -74,7 +74,7 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ token: tokenFor(user), user: publicUser(user) });
 });
 app.get('/api/me', requireAuth, async (req, res) => {
-  const user = await db.get('SELECT id,name,email,role,created_at FROM users WHERE id = ?', Number(req.session.sub));
+  const user = await db.get('SELECT id,name,email,role,plan,created_at FROM users WHERE id = ?', Number(req.session.sub));
   if (!user) return res.status(401).json({ error: 'ไม่พบบัญชีผู้ใช้' });
   res.json({ user: publicUser(user) });
 });
@@ -116,7 +116,7 @@ app.delete('/api/bots/:id', requireAuth, async (req, res) => {
   res.status(204).end();
 });
 app.get('/api/admin/users', requireAuth, requireAdmin, async (_req, res) => {
-  const users = await db.all('SELECT id,name,email,role,created_at AS createdAt FROM users ORDER BY id DESC LIMIT 200');
+  const users = await db.all('SELECT id,name,email,role,plan,created_at AS createdAt FROM users ORDER BY id DESC LIMIT 200');
   res.json({ users });
 });
 app.use((err, _req, res, _next) => {
