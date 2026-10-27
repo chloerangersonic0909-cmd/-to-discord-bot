@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 dotenv.config();
@@ -28,6 +29,8 @@ await db.exec('PRAGMA journal_mode = WAL;');
 await db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT "user", plan TEXT NOT NULL DEFAULT "free" CHECK(plan IN ("free", "premium")), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
 const userColumns = await db.all('PRAGMA table_info(users)');
 if (!userColumns.some(column => column.name === 'plan')) await db.exec('ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT "free"');
+if (!userColumns.some(column => column.name === 'discord_id')) await db.exec('ALTER TABLE users ADD COLUMN discord_id TEXT');
+await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users(discord_id) WHERE discord_id IS NOT NULL');
 await db.exec('CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, name TEXT NOT NULL, discord_user_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))');
 
 const publicUser = u => ({ id: u.id, name: u.name, email: u.email, role: u.role, plan: u.plan || 'free', createdAt: u.created_at });
@@ -47,6 +50,75 @@ function requireAdmin(req, res, next) {
   next();
 }
 app.get('/api/health', (_req, res) => res.json({ ok: true, status: 'ok', service: 'discord-โปรโมท API', time: new Date().toISOString() }));
+
+
+const discordOAuthStates = new Map();
+const frontendUrl = (process.env.FRONTEND_URL || 'https://to-discord-bot.vercel.app').replace(/\/$/, '');
+const discordRedirectUri = process.env.DISCORD_REDIRECT_URI || '';
+app.get('/api/auth/discord', (req, res) => {
+  if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET || !discordRedirectUri) {
+    return res.status(503).send('Discord OAuth ยังตั้งค่าไม่ครบ: ต้องกำหนด DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET และ DISCORD_REDIRECT_URI ที่ Backend');
+  }
+  const state = randomBytes(24).toString('hex');
+  discordOAuthStates.set(state, Date.now() + 10 * 60 * 1000);
+  for (const [key, expiry] of discordOAuthStates) if (expiry < Date.now()) discordOAuthStates.delete(key);
+  const params = new URLSearchParams({
+    client_id: process.env.DISCORD_CLIENT_ID,
+    redirect_uri: discordRedirectUri,
+    response_type: 'code',
+    scope: 'identify email',
+    state
+  });
+  res.redirect('https://discord.com/oauth2/authorize?' + params.toString());
+});
+app.get('/api/auth/discord/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(frontendUrl + '/#discord_error=' + encodeURIComponent('ยกเลิกการอนุญาต Discord'));
+  const expiry = discordOAuthStates.get(String(state || ''));
+  discordOAuthStates.delete(String(state || ''));
+  if (!code || !expiry || expiry < Date.now()) return res.redirect(frontendUrl + '/#discord_error=' + encodeURIComponent('สถานะ OAuth ไม่ถูกต้องหรือหมดอายุ กรุณาลองใหม่'));
+  try {
+    const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID || '',
+        client_secret: process.env.DISCORD_CLIENT_SECRET || '',
+        grant_type: 'authorization_code',
+        code: String(code),
+        redirect_uri: discordRedirectUri
+      })
+    });
+    const tokenData = await tokenResponse.json();
+    if (!tokenResponse.ok || !tokenData.access_token) throw new Error('Discord token exchange failed');
+    const discordResponse = await fetch('https://discord.com/api/users/@me', {
+      headers: { Authorization: 'Bearer ' + tokenData.access_token }
+    });
+    const discordUser = await discordResponse.json();
+    if (!discordResponse.ok || !discordUser.id || !discordUser.email || discordUser.verified !== true) {
+      return res.redirect(frontendUrl + '/#discord_error=' + encodeURIComponent('บัญชี Discord ต้องมีอีเมลที่ยืนยันแล้ว'));
+    }
+    let user = await db.get('SELECT * FROM users WHERE discord_id = ?', String(discordUser.id));
+    if (!user) {
+      user = await db.get('SELECT * FROM users WHERE email = ?', String(discordUser.email).toLowerCase());
+      if (user) {
+        await db.run('UPDATE users SET discord_id = ? WHERE id = ?', String(discordUser.id), user.id);
+        user = await db.get('SELECT * FROM users WHERE id = ?', user.id);
+      } else {
+        const name = String(discordUser.global_name || discordUser.username || 'Discord User').slice(0, 60);
+        const randomPasswordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
+        const result = await db.run('INSERT INTO users(name,email,password_hash,discord_id) VALUES(?,?,?,?)',
+          name, String(discordUser.email).toLowerCase(), randomPasswordHash, String(discordUser.id));
+        user = await db.get('SELECT * FROM users WHERE id = ?', result.lastID);
+      }
+    }
+    const token = tokenFor(user);
+    return res.redirect(frontendUrl + '/#discord_token=' + encodeURIComponent(token));
+  } catch (err) {
+    console.error('Discord OAuth error:', err.message);
+    return res.redirect(frontendUrl + '/#discord_error=' + encodeURIComponent('เข้าสู่ระบบ Discord ไม่สำเร็จ กรุณาลองใหม่'));
+  }
+});
 
 app.post('/api/auth/register', async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 60);
