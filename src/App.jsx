@@ -30,8 +30,30 @@ export default function App() {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [message, setMessage] = useState('');
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
+  const [authName, setAuthName] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authUser, setAuthUser] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\\/$/, '');
   const notify = (text) => { setMessage(text); window.setTimeout(() => setMessage(''), 2600); };
   const filtered = bots.filter(b => b.name.toLowerCase().includes(filter.toLowerCase()));
+  const handleAuth = async (e) => {
+    e.preventDefault(); setAuthBusy(true);
+    try {
+      const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const payload = authMode === 'register' ? { name: authName, email: authEmail, password: authPassword } : { email: authEmail, password: authPassword };
+      const response = await fetch(apiUrl + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'ไม่สามารถเข้าสู่ระบบได้');
+      sessionStorage.setItem('toDiscordBotToken', data.token);
+      setAuthUser(data.user); setName(data.user.name); setEmail(data.user.email); setAuthOpen(false); setAuthPassword('');
+      notify(authMode === 'register' ? 'สมัครสมาชิกสำเร็จ' : 'เข้าสู่ระบบสำเร็จ');
+    } catch (error) { notify(error.message || 'เชื่อมต่อ Backend ไม่สำเร็จ'); }
+    finally { setAuthBusy(false); }
+  };
   const addBot = (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
@@ -47,7 +69,7 @@ export default function App() {
     </aside>
     {mobileMenu && <button className="scrim" onClick={() => setMobileMenu(false)} aria-label="ปิดเมนู"/>}
     <main className="main">
-      <header className="topbar"><div className="crumb"><button className="mobile-menu" onClick={() => setMobileMenu(true)}><Menu size={20}/></button>Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><label className="search"><Search size={16}/><input placeholder="ค้นหาบอต..." value={filter} onChange={e => setFilter(e.target.value)}/></label><button className="icon-btn" onClick={() => setDark(!dark)} title="เปลี่ยนธีม">{dark ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-btn" onClick={() => setPage('การแจ้งเตือน')}><Bell size={18}/></button><button className="avatar" onClick={() => setPage('โปรไฟล์')}>TO</button></div></header>
+      <header className="topbar"><div className="crumb"><button className="mobile-menu" onClick={() => setMobileMenu(true)}><Menu size={20}/></button>Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><label className="search"><Search size={16}/><input placeholder="ค้นหาบอต..." value={filter} onChange={e => setFilter(e.target.value)}/></label><button className="icon-btn" onClick={() => setDark(!dark)} title="เปลี่ยนธีม">{dark ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-btn" onClick={() => setPage('การแจ้งเตือน')}><Bell size={18}/></button><button className="secondary auth-trigger" onClick={() => setAuthOpen(true)}>{authUser ? authUser.name : 'เข้าสู่ระบบ'}</button><button className="avatar" onClick={() => setPage('โปรไฟล์')}>TO</button></div></header>
       <section className="content">
         {page === 'ภาพรวม' && <>
           <div className="page-head"><div><label className="eyebrow">BOT MANAGEMENT PLATFORM</label><h1>ยินดีต้อนรับกลับมา, {name} <em>✦</em></h1><p>ภาพรวมการจัดการ Discord Bot ของคุณในที่เดียว</p></div><button className="primary" onClick={() => setAdding(true)}><Plus size={17}/> เพิ่มบอตใหม่</button></div>
@@ -68,6 +90,7 @@ export default function App() {
       <footer>TO Discord BOT <span>•</span> UI Preview <span className="footer-right">Designed for mobile ✦</span></footer>
     </main>
     {adding && <div className="modal-bg" onClick={()=>setAdding(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><label className="eyebrow">NEW BOT</label><h2>เพิ่มบอตในรายการ</h2><p>เพิ่มชื่อเพื่อแสดงใน Dashboard</p></div><button className="icon-btn" onClick={()=>setAdding(false)}><X size={19}/></button></div><form onSubmit={addBot}><label>ชื่อบอต<input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} placeholder="เช่น TO Helper" required/></label><p className="hint">ฟอร์มนี้ไม่รับหรือบันทึก Bot Token เพื่อความปลอดภัย การเชื่อม Discord จริงจะเพิ่มใน Backend ภายหลัง</p><div className="modal-actions"><button type="button" className="secondary" onClick={()=>setAdding(false)}>ยกเลิก</button><button className="primary"><Plus size={16}/> เพิ่มบอต</button></div></form></div></div>}
+    {authOpen && <div className="modal-bg" onClick={() => setAuthOpen(false)}><div className="modal" onClick={e => e.stopPropagation()}><div className="modal-head"><div><label className="eyebrow">ACCOUNT ACCESS</label><h2>{authMode === 'register' ? 'สร้างบัญชี' : 'เข้าสู่ระบบ'}</h2><p>บัญชีจะเชื่อมกับ Backend เมื่อกำหนด API URL แล้ว</p></div><button className="icon-btn" onClick={() => setAuthOpen(false)}><X size={19}/></button></div><form onSubmit={handleAuth}>{authMode === 'register' && <label>ชื่อที่แสดง<input value={authName} onChange={e=>setAuthName(e.target.value)} autoComplete="name" required minLength={2}/></label>}<label>อีเมล<input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} autoComplete="email" required/></label><label>รหัสผ่าน<input type="password" value={authPassword} onChange={e=>setAuthPassword(e.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} minLength={authMode === 'register' ? 8 : 1} required/></label><p className="hint">{authMode === 'register' ? 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' : 'ใช้บัญชีที่สมัครไว้ใน Backend ของแอป'}</p><button className="primary full" disabled={authBusy}>{authBusy ? 'กำลังเชื่อมต่อ…' : (authMode === 'register' ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ')}</button></form><button className="link auth-switch" onClick={() => setAuthMode(authMode === 'register' ? 'login' : 'register')}>{authMode === 'register' ? 'มีบัญชีแล้ว? เข้าสู่ระบบ' : 'ยังไม่มีบัญชี? สมัครสมาชิก'}</button></div></div>}
     {message && <div className="toast"><Check size={16}/>{message}</div>}
   </div>;
 }
