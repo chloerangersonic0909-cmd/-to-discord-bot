@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Bell, Bot, Check, ChevronDown, Code2, Home, Menu, Moon, Palette, Plus, Search, Server, Settings, ShieldCheck, Sun, UserRound, Users, X, Github, Trash2 } from 'lucide-react';
+import { Activity, Bell, Bot, Check, ChevronDown, Code2, Home, Menu, Moon, Palette, Plus, Search, Server, Settings, ShieldCheck, Sun, UserRound, Users, X, Github, Trash2, Copy, Save, Terminal, FileCode2, Pencil } from 'lucide-react';
 
 const menu = [
   ['ภาพรวม', Home], ['บอตของฉัน', Bot], ['คำสั่งและโค้ด', Code2],
@@ -30,6 +30,15 @@ export default function App() {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [message, setMessage] = useState('');
+  const [commands, setCommands] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('toDiscordBotCommands') || '[]'); } catch { return []; }
+  });
+  const [commandName, setCommandName] = useState('');
+  const [commandDescription, setCommandDescription] = useState('');
+  const [commandType, setCommandType] = useState('slash');
+  const [commandLanguage, setCommandLanguage] = useState('javascript');
+  const [commandCode, setCommandCode] = useState("import { SlashCommandBuilder } from 'discord.js';\n\nexport default {\n  data: new SlashCommandBuilder()\n    .setName('hello')\n    .setDescription('ทักทายผู้ใช้'),\n  async execute(interaction) {\n    await interaction.reply('สวัสดีครับ 👋');\n  }\n};");
+  const [editingCommandId, setEditingCommandId] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const [authName, setAuthName] = useState('');
@@ -73,6 +82,34 @@ export default function App() {
     restoreSession();
   }, []);
   const notify = (text) => { setMessage(text); window.setTimeout(() => setMessage(''), 2600); };
+  useEffect(() => {
+    try { localStorage.setItem('toDiscordBotCommands', JSON.stringify(commands)); }
+    catch { notify('พื้นที่จัดเก็บในอุปกรณ์เต็ม ไม่สามารถบันทึกคำสั่งได้'); }
+  }, [commands]);
+  const resetCommandForm = () => {
+    setCommandName(''); setCommandDescription(''); setCommandType('slash'); setCommandLanguage('javascript');
+    setCommandCode("import { SlashCommandBuilder } from 'discord.js';\n\nexport default {\n  data: new SlashCommandBuilder()\n    .setName('hello')\n    .setDescription('ทักทายผู้ใช้'),\n  async execute(interaction) {\n    await interaction.reply('สวัสดีครับ 👋');\n  }\n};");
+    setEditingCommandId(null);
+  };
+  const saveCommand = (e) => {
+    e.preventDefault();
+    const normalizedName = commandName.trim().toLowerCase().replace(/^\//, '');
+    if (!/^[a-z0-9_-]{1,32}$/.test(normalizedName)) { notify('ชื่อคำสั่งต้องเป็น a-z, 0-9, _ หรือ - และยาวไม่เกิน 32 ตัว'); return; }
+    if (!commandDescription.trim() || !commandCode.trim()) { notify('กรอกคำอธิบายและโค้ดก่อนบันทึก'); return; }
+    const record = { id: editingCommandId || Date.now(), name: normalizedName, description: commandDescription.trim(), type: commandType, language: commandLanguage, code: commandCode, updatedAt: new Date().toISOString() };
+    setCommands(current => editingCommandId ? current.map(item => item.id === editingCommandId ? record : item) : [record, ...current]);
+    resetCommandForm();
+    notify(editingCommandId ? 'อัปเดตคำสั่งในคลังแล้ว' : 'บันทึกคำสั่งลงคลังแล้ว');
+  };
+  const editCommand = (command) => {
+    setCommandName(command.name); setCommandDescription(command.description); setCommandType(command.type);
+    setCommandLanguage(command.language); setCommandCode(command.code); setEditingCommandId(command.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const copyText = async (text) => {
+    try { await navigator.clipboard.writeText(text); notify('คัดลอกโค้ดแล้ว'); }
+    catch { notify('คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกและคัดลอกโค้ด'); }
+  };
   const filtered = bots.filter(b => b.name.toLowerCase().includes(filter.toLowerCase()));
   const handleAuth = async (e) => {
     e.preventDefault(); setAuthBusy(true);
@@ -134,7 +171,26 @@ export default function App() {
           <div className="footnote"><ShieldCheck size={15}/> สถานะบอตและตัวเลขทั้งหมดเป็นข้อมูลจำลอง ยังไม่ได้เชื่อม Discord API</div>
         </>}
         {page === 'บอตของฉัน' && <><div className="page-head"><div><label className="eyebrow">BOT WORKSPACE</label><h1>บอตของฉัน</h1><p>จัดการรายการบอตของคุณ</p></div><button className="primary" onClick={() => setAdding(true)}><Plus size={17}/> เพิ่มบอต</button></div><div className="bot-grid">{filtered.map(bot => <div className="panel bot-card" key={bot.id}><div className="bot-card-head"><div className="bot-icon big"><Bot size={26}/></div><button className="icon-btn" onClick={() => removeBot(bot)}><Trash2 size={16}/></button></div><h3>{bot.name}</h3><p>{bot.tag}</p><span className={'status ' + (bot.status==='ออนไลน์'?'online':'offline')}>{bot.status}</span><div className="bot-stats"><div><small>เซิร์ฟเวอร์</small><b>{bot.servers}</b></div><div><small>Uptime</small><b>—</b></div></div><button className="secondary full" onClick={() => notify('ต้องเชื่อม Discord API และ Backend ก่อน')}>ดูรายละเอียด</button></div>)}</div>{filtered.length===0&&<div className="panel empty">ไม่พบบอตที่ค้นหา</div>}</>}
-        {page === 'คำสั่งและโค้ด' && <><div className="page-head"><div><label className="eyebrow">DEVELOPER TOOLS</label><h1>คำสั่งและโค้ด</h1><p>ไฟล์โปรเจกต์และลิงก์ Repository</p></div><a className="primary" href="https://github.com/chloerangersonic0909-cmd/-to-discord-bot" target="_blank" rel="noreferrer"><Github size={17}/> เปิด GitHub ↗</a></div><div className="panel file-panel"><h3>โครงสร้างโปรเจกต์</h3><div className="file-line">📁　src/ <small>หน้าแอปและสไตล์</small></div><div className="file-line">📄　App.jsx <small>React Dashboard</small></div><div className="file-line">📄　styles.css <small>ธีมและ Responsive</small></div><div className="file-line">📁　server/ <small>Backend API scaffold</small></div><div className="file-line">📄　capacitor.config.json <small>Android wrapper config</small></div><p className="hint">การสั่งงานบอตจริงต้องมี Backend ที่ปลอดภัยและการตั้งค่า Discord Developer Application</p></div></>}
+        {page === 'คำสั่งและโค้ด' && <>
+          <div className="page-head"><div><label className="eyebrow">COMMAND STUDIO</label><h1>คำสั่งและโค้ด</h1><p>สร้าง แก้ไข และเก็บโค้ดคำสั่ง Discord ไว้ในแอปเดียว</p></div><a className="secondary" href="https://github.com/chloerangersonic0909-cmd/-to-discord-bot" target="_blank" rel="noreferrer"><Github size={16}/> Repository ↗</a></div>
+          <div className="command-banner"><div className="command-banner-icon"><Terminal size={22}/></div><div><b>Command Studio</b><p>ตัวช่วยจัดระเบียบคำสั่ง Slash / Prefix พร้อมโค้ด JavaScript หรือ Python</p></div><span className="command-count">{commands.length} คำสั่ง</span></div>
+          <div className="command-layout">
+            <form className="panel command-editor" onSubmit={saveCommand}>
+              <div className="panel-head"><div><h3><FileCode2 size={17}/> {editingCommandId ? 'แก้ไขคำสั่ง' : 'ลงทะเบียนคำสั่งใหม่'}</h3><p>กรอกข้อมูลและวางโค้ดของคำสั่ง</p></div><span className="editor-dot"/></div>
+              <label>ชื่อคำสั่ง<input value={commandName} onChange={e=>setCommandName(e.target.value)} placeholder="เช่น help หรือ ping" maxLength={32} required/><small>ไม่ต้องใส่ / นำหน้า</small></label>
+              <label>คำอธิบาย<input value={commandDescription} onChange={e=>setCommandDescription(e.target.value)} placeholder="อธิบายว่าคำสั่งนี้ทำอะไร" maxLength={100} required/></label>
+              <div className="command-fields"><label>รูปแบบคำสั่ง<select value={commandType} onChange={e=>setCommandType(e.target.value)}><option value="slash">Slash Command /คำสั่ง</option><option value="prefix">Prefix Command เช่น !help</option></select></label><label>ภาษาโค้ด<select value={commandLanguage} onChange={e=>{const lang=e.target.value;setCommandLanguage(lang);if(lang==='python')setCommandCode("import discord\nfrom discord import app_commands\n\n@app_commands.command(name='hello', description='ทักทายผู้ใช้')\nasync def hello(interaction: discord.Interaction):\n    await interaction.response.send_message('สวัสดีครับ 👋')");else setCommandCode("import { SlashCommandBuilder } from 'discord.js';\n\nexport default {\n  data: new SlashCommandBuilder()\n    .setName('hello')\n    .setDescription('ทักทายผู้ใช้'),\n  async execute(interaction) {\n    await interaction.reply('สวัสดีครับ 👋');\n  }\n};");}}><option value="javascript">JavaScript · discord.js</option><option value="python">Python · discord.py</option></select></label></div>
+              <label className="code-label">โค้ดคำสั่ง <span>{commandLanguage === 'python' ? 'PY' : 'JS'}</span></label><textarea className="code-input" value={commandCode} onChange={e=>setCommandCode(e.target.value)} spellCheck="false" autoCapitalize="off" autoCorrect="off" required/>
+              <p className="hint">บันทึกนี้เก็บไว้ในอุปกรณ์ก่อน ยังไม่ส่งคำสั่งไปลงทะเบียนกับ Discord โดยตรง การซิงก์จริงต้องมีบอต Token และ Backend ที่ปลอดภัย</p>
+              <div className="command-actions"><button type="button" className="secondary" onClick={()=>copyText(commandCode)}><Copy size={15}/> คัดลอกโค้ด</button><button className="primary"><Save size={15}/>{editingCommandId ? 'บันทึกการแก้ไข' : 'บันทึกคำสั่ง'}</button>{editingCommandId && <button type="button" className="icon-btn" onClick={resetCommandForm} title="ยกเลิกแก้ไข"><X size={17}/></button>}</div>
+            </form>
+            <div className="panel command-library"><div className="panel-head"><div><h3>คลังคำสั่งของฉัน</h3><p>คำสั่งที่บันทึกไว้ในอุปกรณ์นี้</p></div><span className="library-badge">{commands.length}</span></div>
+              {commands.length === 0 ? <div className="command-empty"><div><Code2 size={25}/></div><b>ยังไม่มีคำสั่งในคลัง</b><p>สร้างคำสั่งแรกจากฟอร์ม แล้วคำสั่งจะปรากฏที่นี่</p></div> : commands.map(command=><article className="command-item" key={command.id}><div className="command-item-top"><div className="command-item-icon"><Code2 size={17}/></div><div className="command-item-title"><b>{command.type==='slash' ? '/' : '!'}{command.name}</b><small>{command.description}</small></div><span className="command-lang">{command.language==='python'?'PY':'JS'}</span></div><div className="command-item-actions"><button className="secondary" onClick={()=>editCommand(command)} type="button"><Pencil size={13}/> แก้ไข</button><button className="secondary" onClick={()=>copyText(command.code)} type="button"><Copy size={13}/> คัดลอก</button><button className="icon-btn" onClick={()=>{setCommands(current=>current.filter(item=>item.id!==command.id));if(editingCommandId===command.id)resetCommandForm();notify('ลบคำสั่งจากคลังแล้ว');}} type="button" title="ลบคำสั่ง"><Trash2 size={15}/></button></div></article>)}
+              <div className="command-library-footer"><span><Check size={14}/> บันทึกอัตโนมัติในอุปกรณ์</span><button className="link" onClick={()=>copyText(JSON.stringify(commands,null,2))} type="button">ส่งออก JSON ↗</button></div>
+            </div>
+          </div>
+          <div className="panel file-panel"><div className="panel-head"><div><h3>โครงสร้างโปรเจกต์</h3><p>ไฟล์หลักของแอป</p></div></div><div className="file-line">📁　src/ <small>หน้าแอปและสไตล์</small></div><div className="file-line">📄　App.jsx <small>React Dashboard + Command Studio</small></div><div className="file-line">📄　styles.css <small>ธีมและ Responsive</small></div><div className="file-line">📁　server/ <small>Backend API scaffold</small></div><div className="file-line">📄　capacitor.config.json <small>Android wrapper config</small></div></div>
+        </>}
         {page === 'กิจกรรม' && <><div className="page-head"><div><label className="eyebrow">ACTIVITY LOG</label><h1>กิจกรรม</h1><p>บันทึกกิจกรรมตัวอย่างของแอป</p></div></div><div className="panel"><div className="activity"><span><Check size={15}/></span><div><b>Dashboard พร้อมใช้งาน</b><small>โหลด UI สำเร็จ · วันนี้</small></div></div><div className="activity"><span><Settings size={15}/></span><div><b>ตั้งค่าธีมเริ่มต้น</b><small>ธีมมืดและสีม่วง · วันนี้</small></div></div></div></>}
         {page === 'การแจ้งเตือน' && <><div className="page-head"><div><label className="eyebrow">NOTIFICATIONS</label><h1>การแจ้งเตือน</h1><p>กำหนดการแจ้งเตือนภายในแอป</p></div></div><div className="panel settings"><div className="setting-row"><div><b>เปิดการแจ้งเตือนในแอป</b><p>แสดงข้อความสถานะภายใน Dashboard</p></div><Toggle value={alerts} onChange={setAlerts}/></div><div className="setting-row"><div><b>แจ้งเตือนสถานะบอต</b><p>ต้องเชื่อมต่อ Backend และ Discord API</p></div><Toggle value={alerts} onChange={setAlerts}/></div><p className="hint">Push notifications ยังไม่ได้ตั้งค่าในเวอร์ชันนี้</p></div></>}
         {page === 'โปรไฟล์' && <><div className="page-head"><div><label className="eyebrow">YOUR ACCOUNT</label><h1>โปรไฟล์ผู้ใช้</h1><p>จัดการข้อมูลโปรไฟล์ตัวอย่าง</p></div></div><div className="panel profile"><div className="cover"/><div className="profile-head"><div className="avatar profile-avatar">TO</div><div><h2>{name}</h2><p>{email}</p><span className="role">{authUser ? (authUser.plan === 'premium' ? 'แพ็กเกจ Premium' : 'แพ็กเกจ Free · จำกัด 1 บอต') : 'ตัวอย่าง · เข้าสู่ระบบเพื่อบันทึก'}</span></div></div><div className="form"><label>ชื่อที่แสดง<input value={name} onChange={e=>setName(e.target.value)}/></label><label>อีเมล<input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><button className="primary" onClick={async()=>{try{if(!authUser){notify('เข้าสู่ระบบก่อนบันทึกโปรไฟล์');return;}const data=await apiFetch('/api/me',{method:'PATCH',body:JSON.stringify({name,email})});setAuthUser(data.user);setName(data.user.name);setEmail(data.user.email);notify('บันทึกโปรไฟล์แล้ว');}catch(error){notify(error.message||'บันทึกโปรไฟล์ไม่สำเร็จ');}}}>บันทึกการเปลี่ยนแปลง</button></div></div></>}
