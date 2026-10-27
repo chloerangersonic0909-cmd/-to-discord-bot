@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Activity, Bell, Bot, Check, ChevronDown, Code2, Home, Menu, Moon, Palette, Plus, Search, Server, Settings, ShieldCheck, Sun, UserRound, Users, X, Github, Trash2 } from 'lucide-react';
 
 const menu = [
@@ -37,7 +37,41 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authUser, setAuthUser] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+  const getToken = () => sessionStorage.getItem('toDiscordBotToken');
+  const apiFetch = async (path, options = {}) => {
+    const token = getToken();
+    const response = await fetch(apiUrl + path, {
+      ...options,
+      headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(options.headers || {}) }
+    });
+    if (response.status === 204) return null;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'คำขอไม่สำเร็จ');
+    return data;
+  };
+  const loadBots = async () => {
+    if (!getToken()) return;
+    try {
+      const data = await apiFetch('/api/bots');
+      setBots(data.bots.map(bot => ({ ...bot, tag: 'บันทึกในบัญชี', status: 'ออฟไลน์', servers: 0 })));
+    } catch (error) { notify(error.message || 'โหลดรายการบอตไม่สำเร็จ'); }
+  };
+  useEffect(() => {
+    const restoreSession = async () => {
+      if (!getToken()) return;
+      try {
+        const data = await apiFetch('/api/me');
+        setAuthUser(data.user); setName(data.user.name); setEmail(data.user.email);
+        const botData = await apiFetch('/api/bots');
+        setBots(botData.bots.map(bot => ({ ...bot, tag: 'บันทึกในบัญชี', status: 'ออฟไลน์', servers: 0 })));
+      } catch {
+        sessionStorage.removeItem('toDiscordBotToken');
+        setAuthUser(null);
+      }
+    };
+    restoreSession();
+  }, []);
   const notify = (text) => { setMessage(text); window.setTimeout(() => setMessage(''), 2600); };
   const filtered = bots.filter(b => b.name.toLowerCase().includes(filter.toLowerCase()));
   const handleAuth = async (e) => {
@@ -45,20 +79,40 @@ export default function App() {
     try {
       const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
       const payload = authMode === 'register' ? { name: authName, email: authEmail, password: authPassword } : { email: authEmail, password: authPassword };
-      const response = await fetch(apiUrl + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'ไม่สามารถเข้าสู่ระบบได้');
+      const data = await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
       sessionStorage.setItem('toDiscordBotToken', data.token);
       setAuthUser(data.user); setName(data.user.name); setEmail(data.user.email); setAuthOpen(false); setAuthPassword('');
+      await loadBots();
       notify(authMode === 'register' ? 'สมัครสมาชิกสำเร็จ' : 'เข้าสู่ระบบสำเร็จ');
     } catch (error) { notify(error.message || 'เชื่อมต่อ Backend ไม่สำเร็จ'); }
     finally { setAuthBusy(false); }
   };
-  const addBot = (e) => {
+  const addBot = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    setBots([...bots, { id: Date.now(), name: newName.trim(), tag: 'เพิ่มในรายการแล้ว', status: 'ออฟไลน์', servers: 0 }]);
-    setNewName(''); setAdding(false); notify('เพิ่มบอตในรายการตัวอย่างแล้ว');
+    try {
+      if (authUser) {
+        const data = await apiFetch('/api/bots', { method: 'POST', body: JSON.stringify({ name: newName.trim() }) });
+        setBots(current => [{ ...data.bot, tag: 'บันทึกในบัญชี', status: 'ออฟไลน์', servers: 0 }, ...current]);
+        notify('บันทึกบอตลงบัญชีแล้ว');
+      } else {
+        setBots(current => [...current, { id: Date.now(), name: newName.trim(), tag: 'ข้อมูลตัวอย่าง (ยังไม่บันทึก)', status: 'ออฟไลน์', servers: 0 }]);
+        notify('เพิ่มเฉพาะตัวอย่าง กรุณาเข้าสู่ระบบเพื่อบันทึกถาวร');
+      }
+      setNewName(''); setAdding(false);
+    } catch (error) { notify(error.message || 'บันทึกบอตไม่สำเร็จ'); }
+  };
+  const removeBot = async (bot) => {
+    try {
+      if (authUser && Number.isInteger(Number(bot.id))) await apiFetch('/api/bots/' + bot.id, { method: 'DELETE' });
+      setBots(current => current.filter(item => item.id !== bot.id));
+      notify(authUser ? 'ลบบอตจากบัญชีแล้ว' : 'นำบอตออกจากรายการตัวอย่างแล้ว');
+    } catch (error) { notify(error.message || 'ลบบอตไม่สำเร็จ'); }
+  };
+  const logout = () => {
+    sessionStorage.removeItem('toDiscordBotToken');
+    setAuthUser(null); setAuthOpen(false); setName('ผู้ใช้'); setEmail(''); setBots(starterBots);
+    notify('ออกจากระบบแล้ว');
   };
   return <div className={'app ' + (dark ? 'dark' : 'light') + ' accent-' + accent + (compact ? ' compact' : '')}>
     <aside className={'sidebar ' + (mobileMenu ? 'open' : '')}>
@@ -69,7 +123,7 @@ export default function App() {
     </aside>
     {mobileMenu && <button className="scrim" onClick={() => setMobileMenu(false)} aria-label="ปิดเมนู"/>}
     <main className="main">
-      <header className="topbar"><div className="crumb"><button className="mobile-menu" onClick={() => setMobileMenu(true)}><Menu size={20}/></button>Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><label className="search"><Search size={16}/><input placeholder="ค้นหาบอต..." value={filter} onChange={e => setFilter(e.target.value)}/></label><button className="icon-btn" onClick={() => setDark(!dark)} title="เปลี่ยนธีม">{dark ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-btn" onClick={() => setPage('การแจ้งเตือน')}><Bell size={18}/></button><button className="secondary auth-trigger" onClick={() => setAuthOpen(true)}>{authUser ? authUser.name : 'เข้าสู่ระบบ'}</button><button className="avatar" onClick={() => setPage('โปรไฟล์')}>TO</button></div></header>
+      <header className="topbar"><div className="crumb"><button className="mobile-menu" onClick={() => setMobileMenu(true)}><Menu size={20}/></button>Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><label className="search"><Search size={16}/><input placeholder="ค้นหาบอต..." value={filter} onChange={e => setFilter(e.target.value)}/></label><button className="icon-btn" onClick={() => setDark(!dark)} title="เปลี่ยนธีม">{dark ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-btn" onClick={() => setPage('การแจ้งเตือน')}><Bell size={18}/></button>{authUser ? <button className="secondary auth-trigger" onClick={logout}>ออกจากระบบ</button> : <button className="secondary auth-trigger" onClick={() => setAuthOpen(true)}>เข้าสู่ระบบ</button>}<button className="avatar" onClick={() => setPage('โปรไฟล์')}>TO</button></div></header>
       <section className="content">
         {page === 'ภาพรวม' && <>
           <div className="page-head"><div><label className="eyebrow">BOT MANAGEMENT PLATFORM</label><h1>ยินดีต้อนรับกลับมา, {name} <em>✦</em></h1><p>ภาพรวมการจัดการ Discord Bot ของคุณในที่เดียว</p></div><button className="primary" onClick={() => setAdding(true)}><Plus size={17}/> เพิ่มบอตใหม่</button></div>
@@ -79,7 +133,7 @@ export default function App() {
           <div className="columns"><div className="panel"><div className="panel-head"><div><h3>บอตของฉัน</h3><p>รายการบอตใน Workspace</p></div><button className="link" onClick={() => setPage('บอตของฉัน')}>ดูทั้งหมด →</button></div>{filtered.slice(0,4).map(bot => <div className="bot-row" key={bot.id}><div className="bot-icon"><Bot size={20}/></div><div className="bot-info"><b>{bot.name}</b><small>{bot.tag}</small></div><span className={'status ' + (bot.status==='ออนไลน์'?'online':'offline')}>{bot.status}</span></div>)}<button className="add-row" onClick={() => setAdding(true)}><Plus size={15}/> เพิ่มบอตอีกตัว</button></div><div className="panel"><div className="panel-head"><div><h3>กิจกรรมล่าสุด</h3><p>ตัวอย่างการแสดงผล</p></div></div><div className="activity"><span><Check size={15}/></span><div><b>Dashboard พร้อมใช้งาน</b><small>โหลด UI สำเร็จ · วันนี้</small></div></div><div className="activity"><span><Bot size={15}/></span><div><b>เพิ่มบอตตัวอย่าง</b><small>TO Helper · วันนี้</small></div></div><div className="activity"><span><Settings size={15}/></span><div><b>Workspace เริ่มต้น</b><small>ธีมมืด · วันนี้</small></div></div></div></div>
           <div className="footnote"><ShieldCheck size={15}/> สถานะบอตและตัวเลขทั้งหมดเป็นข้อมูลจำลอง ยังไม่ได้เชื่อม Discord API</div>
         </>}
-        {page === 'บอตของฉัน' && <><div className="page-head"><div><label className="eyebrow">BOT WORKSPACE</label><h1>บอตของฉัน</h1><p>จัดการรายการบอตของคุณ</p></div><button className="primary" onClick={() => setAdding(true)}><Plus size={17}/> เพิ่มบอต</button></div><div className="bot-grid">{filtered.map(bot => <div className="panel bot-card" key={bot.id}><div className="bot-card-head"><div className="bot-icon big"><Bot size={26}/></div><button className="icon-btn" onClick={() => {setBots(bots.filter(b=>b.id!==bot.id));notify('นำออกจากรายการแล้ว')}}><Trash2 size={16}/></button></div><h3>{bot.name}</h3><p>{bot.tag}</p><span className={'status ' + (bot.status==='ออนไลน์'?'online':'offline')}>{bot.status}</span><div className="bot-stats"><div><small>เซิร์ฟเวอร์</small><b>{bot.servers}</b></div><div><small>Uptime</small><b>—</b></div></div><button className="secondary full" onClick={() => notify('ต้องเชื่อม Discord API และ Backend ก่อน')}>ดูรายละเอียด</button></div>)}</div>{filtered.length===0&&<div className="panel empty">ไม่พบบอตที่ค้นหา</div>}</>}
+        {page === 'บอตของฉัน' && <><div className="page-head"><div><label className="eyebrow">BOT WORKSPACE</label><h1>บอตของฉัน</h1><p>จัดการรายการบอตของคุณ</p></div><button className="primary" onClick={() => setAdding(true)}><Plus size={17}/> เพิ่มบอต</button></div><div className="bot-grid">{filtered.map(bot => <div className="panel bot-card" key={bot.id}><div className="bot-card-head"><div className="bot-icon big"><Bot size={26}/></div><button className="icon-btn" onClick={() => removeBot(bot)}><Trash2 size={16}/></button></div><h3>{bot.name}</h3><p>{bot.tag}</p><span className={'status ' + (bot.status==='ออนไลน์'?'online':'offline')}>{bot.status}</span><div className="bot-stats"><div><small>เซิร์ฟเวอร์</small><b>{bot.servers}</b></div><div><small>Uptime</small><b>—</b></div></div><button className="secondary full" onClick={() => notify('ต้องเชื่อม Discord API และ Backend ก่อน')}>ดูรายละเอียด</button></div>)}</div>{filtered.length===0&&<div className="panel empty">ไม่พบบอตที่ค้นหา</div>}</>}
         {page === 'คำสั่งและโค้ด' && <><div className="page-head"><div><label className="eyebrow">DEVELOPER TOOLS</label><h1>คำสั่งและโค้ด</h1><p>ไฟล์โปรเจกต์และลิงก์ Repository</p></div><a className="primary" href="https://github.com/chloerangersonic0909-cmd/-to-discord-bot" target="_blank" rel="noreferrer"><Github size={17}/> เปิด GitHub ↗</a></div><div className="panel file-panel"><h3>โครงสร้างโปรเจกต์</h3><div className="file-line">📁　src/ <small>หน้าแอปและสไตล์</small></div><div className="file-line">📄　App.jsx <small>React Dashboard</small></div><div className="file-line">📄　styles.css <small>ธีมและ Responsive</small></div><div className="file-line">📁　server/ <small>Backend API scaffold</small></div><div className="file-line">📄　capacitor.config.json <small>Android wrapper config</small></div><p className="hint">การสั่งงานบอตจริงต้องมี Backend ที่ปลอดภัยและการตั้งค่า Discord Developer Application</p></div></>}
         {page === 'กิจกรรม' && <><div className="page-head"><div><label className="eyebrow">ACTIVITY LOG</label><h1>กิจกรรม</h1><p>บันทึกกิจกรรมตัวอย่างของแอป</p></div></div><div className="panel"><div className="activity"><span><Check size={15}/></span><div><b>Dashboard พร้อมใช้งาน</b><small>โหลด UI สำเร็จ · วันนี้</small></div></div><div className="activity"><span><Settings size={15}/></span><div><b>ตั้งค่าธีมเริ่มต้น</b><small>ธีมมืดและสีม่วง · วันนี้</small></div></div></div></>}
         {page === 'การแจ้งเตือน' && <><div className="page-head"><div><label className="eyebrow">NOTIFICATIONS</label><h1>การแจ้งเตือน</h1><p>กำหนดการแจ้งเตือนภายในแอป</p></div></div><div className="panel settings"><div className="setting-row"><div><b>เปิดการแจ้งเตือนในแอป</b><p>แสดงข้อความสถานะภายใน Dashboard</p></div><Toggle value={alerts} onChange={setAlerts}/></div><div className="setting-row"><div><b>แจ้งเตือนสถานะบอต</b><p>ต้องเชื่อมต่อ Backend และ Discord API</p></div><Toggle value={alerts} onChange={setAlerts}/></div><p className="hint">Push notifications ยังไม่ได้ตั้งค่าในเวอร์ชันนี้</p></div></>}
