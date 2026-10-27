@@ -25,10 +25,12 @@ app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHe
 const here = path.dirname(fileURLToPath(import.meta.url));
 const db = await open({ filename: process.env.DATABASE_PATH || path.join(here, 'data.sqlite'), driver: sqlite3.Database });
 await db.exec('PRAGMA journal_mode = WAL;');
-await db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT "user", created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
+await db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT "user", plan TEXT NOT NULL DEFAULT "free" CHECK(plan IN ("free", "premium")), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
+const userColumns = await db.all('PRAGMA table_info(users)');
+if (!userColumns.some(column => column.name === 'plan')) await db.exec('ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT "free"');
 await db.exec('CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, name TEXT NOT NULL, discord_user_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))');
 
-const publicUser = u => ({ id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.created_at });
+const publicUser = u => ({ id: u.id, name: u.name, email: u.email, role: u.role, plan: u.plan || 'free', createdAt: u.created_at });
 const tokenFor = u => jwt.sign({ sub: String(u.id), role: u.role }, jwtSecret, { expiresIn: '12h', issuer: 'to-discord-bot-api' });
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -56,7 +58,7 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 12);
     const result = await db.run('INSERT INTO users(name,email,password_hash) VALUES(?,?,?)', name, email, hash);
-    const user = await db.get('SELECT id,name,email,role,created_at FROM users WHERE id = ?', result.lastID);
+    const user = await db.get('SELECT id,name,email,role,plan,created_at FROM users WHERE id = ?', result.lastID);
     res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT') return res.status(409).json({ error: 'อีเมลนี้มีบัญชีแล้ว' });
@@ -101,6 +103,10 @@ app.post('/api/bots', requireAuth, async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 80);
   const discordUserId = String(req.body?.discordUserId || '').trim().slice(0, 30) || null;
   if (name.length < 2) return res.status(400).json({ error: 'ชื่อบอตต้องมีอย่างน้อย 2 ตัวอักษร' });
+  const user = await db.get('SELECT plan FROM users WHERE id = ?', Number(req.session.sub));
+  const currentCount = await db.get('SELECT COUNT(*) AS count FROM bots WHERE user_id = ?', Number(req.session.sub));
+  const botLimit = user?.plan === 'premium' ? 10 : 1;
+  if ((currentCount?.count || 0) >= botLimit) return res.status(403).json({ error: user?.plan === 'premium' ? 'แพ็กเกจ Premium ถึงขีดจำกัดบอตแล้ว' : 'แพ็กเกจ Free เพิ่มได้ 1 บอตเท่านั้น กรุณาลบบอตเดิมก่อนเพิ่มใหม่' });
   const result = await db.run('INSERT INTO bots(user_id,name,discord_user_id) VALUES(?,?,?)', Number(req.session.sub), name, discordUserId);
   res.status(201).json({ bot: { id: result.lastID, name, discordUserId } });
 });
