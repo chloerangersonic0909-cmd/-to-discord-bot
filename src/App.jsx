@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Activity, Backpack, Bell, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Crosshair, Crown, Flame, Gamepad2, Heart, Home, Menu, Minus, Plus, Settings, Shield, ShoppingBag, Swords, Target, Trophy, UserRound, Users, Volume2, VolumeX, Zap, X, RotateCcw, Play, Pause, Map, Package, Check, LockKeyhole, Coins, Star, Wifi, Timer, Skull, Radio, Sparkles } from 'lucide-react';
 
 const modes = [
@@ -27,7 +27,7 @@ function App(){
   const [selectedWeapon,setSelectedWeapon]=useState(0);
   const [sound,setSound]=useState(true);
   const [showSettings,setShowSettings]=useState(false);
-  const [queue,setQueue]=useState(false);
+  const [queue,setQueue]=useState(false);\n  const queueTimer=useRef(null);
   const [hp,setHp]=useState(100);
   const [ammo,setAmmo]=useState(30);
   const [reserve,setReserve]=useState(120);
@@ -39,7 +39,7 @@ function App(){
   const [toast,setToast]=useState('');
   const [showProfile,setShowProfile]=useState(false);
   const notify=(message)=>{setToast(message);window.setTimeout(()=>setToast(''),2300)};
-  const goPlay=()=>{setQueue(true);setTimeout(()=>{setQueue(false);setPage('arena');setHp(100);setAmmo(weapons[selectedWeapon].ammo);setReserve(120);setKills(0);setScore(0);setArenaTime(90);setEnemies([{id:1,x:67,y:28,hp:100},{id:2,x:80,y:61,hp:100},{id:3,x:42,y:70,hp:100}]);},1100)};
+  const goPlay=()=>{setQueue(true);queueTimer.current=window.setTimeout(()=>{setQueue(false);setPage('arena');setHp(100);setAmmo(weapons[selectedWeapon].ammo);setReserve(120);setKills(0);setScore(0);setArenaTime(90);setEnemies([{id:1,x:67,y:28,hp:100},{id:2,x:80,y:61,hp:100},{id:3,x:42,y:70,hp:100}]);},1100)};\n  const cancelQueue=()=>{if(queueTimer.current)window.clearTimeout(queueTimer.current);queueTimer.current=null;setQueue(false)};
   const leaveMatch=()=>{setPage('lobby');setCoins(c=>c+Math.max(0,kills*25));setXp(x=>x+Math.max(10,kills*18));notify('สรุปผลแมตช์แล้ว รับรางวัลตามผลงาน!')};
   const shoot=()=>{if(page!=='arena')return;if(ammo<=0){notify('กระสุนหมดแล้ว กดเติมกระสุน');return;}setAmmo(a=>a-1);setScore(s=>s+10);setEnemies(current=>{if(!current.length)return current;const target=current[0];const updated={...target,hp:target.hp-50};if(updated.hp<=0){setKills(k=>k+1);setMissionsState(m=>m.map(x=>x.id===1?{...x,progress:Math.min(x.total,x.progress+1)}:x));return [...current.slice(1),{id:Date.now(),x:25+Math.random()*55,y:22+Math.random()*55,hp:100}];}return [updated,...current.slice(1)];});};
   const reload=()=>{const need=weapons[selectedWeapon].ammo-ammo;if(need<=0){notify('กระสุนเต็มแล้ว');return;}if(reserve<=0){notify('กระสุนสำรองหมด');return;}const amount=Math.min(need,reserve);setAmmo(a=>a+amount);setReserve(r=>r-amount);notify('เติมกระสุนแล้ว');};
@@ -65,7 +65,7 @@ function App(){
     {showSettings&&<div className="gg-modal-backdrop" onClick={()=>setShowSettings(false)}><section className="gg-modal" onClick={e=>e.stopPropagation()}><button className="gg-modal-close" onClick={()=>setShowSettings(false)}><X size={18}/></button><Settings size={25}/><small>GAME SETTINGS</small><h2>ตั้งค่าเกม</h2><div className="gg-setting-row"><span><Volume2 size={17}/> เสียงเกม</span><button className={'gg-toggle '+(sound?'on':'')} onClick={()=>setSound(!sound)}><i/></button></div><div className="gg-setting-row"><span><Activity size={17}/> กราฟิก</span><select defaultValue="high"><option value="low">ต่ำ</option><option value="medium">กลาง</option><option value="high">สูง</option></select></div><button className="gg-play-btn" onClick={()=>setShowSettings(false)}>เสร็จสิ้น</button></section></div>}
     {showProfile&&<div className="gg-modal-backdrop" onClick={()=>setShowProfile(false)}><section className="gg-modal" onClick={e=>e.stopPropagation()}><button className="gg-modal-close" onClick={()=>setShowProfile(false)}><X size={18}/></button><div className="gg-profile-big">G</div><small>PLAYER PROFILE</small><h2>{playerName}</h2><p>PLAYER ID · #804271</p><div className="gg-profile-detail"><span>ระดับ <b>{level}</b></span><span>GO Coins <b>{coins.toLocaleString()}</b></span><span>XP <b>{xp}</b></span></div><button className="gg-play-btn" onClick={()=>{setShowProfile(false);setEditName(true);setPage('lobby')}}>แก้ไขโปรไฟล์</button></section></div>}
     {toast&&<div className="gg-toast"><Check size={16}/>{toast}</div>}
-    {queue&&<div className="gg-queue-overlay"><div className="gg-queue-box"><div className="gg-spinner big"/><small>MATCHMAKING</small><h2>กำลังหาห้อง...</h2><p>กำลังเตรียมสนาม NEON FRONTIER</p><div className="gg-progress"><i/></div><button onClick={()=>setQueue(false)}>ยกเลิก</button></div></div>}
+    {queue&&<div className="gg-queue-overlay"><div className="gg-queue-box"><div className="gg-spinner big"/><small>MATCHMAKING</small><h2>กำลังหาห้อง...</h2><p>กำลังเตรียมสนาม NEON FRONTIER</p><div className="gg-progress"><i/></div><button onClick={cancelQueue}>ยกเลิก</button></div></div>}
   </div>
 }
 export default App;
