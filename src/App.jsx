@@ -37,7 +37,7 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authUser, setAuthUser] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
-  const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\\/$/, '');
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
   const notify = (text) => { setMessage(text); window.setTimeout(() => setMessage(''), 2600); };
   const filtered = bots.filter(b => b.name.toLowerCase().includes(filter.toLowerCase()));
   const handleAuth = async (e) => {
