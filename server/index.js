@@ -81,7 +81,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
 app.patch('/api/me', requireAuth, async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 60);
   const email = String(req.body?.email || '').trim().toLowerCase();
-  if (name.length < 2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+  if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'กรอกชื่ออย่างน้อย 2 ตัวอักษรและอีเมลให้ถูกต้อง' });
   }
   try {
