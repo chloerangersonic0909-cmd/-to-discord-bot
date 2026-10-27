@@ -1,67 +1,37 @@
-# TO Discord BOT
+# discord-โปรโมท
 
-แอป Dashboard สำหรับจัดการรายการ Discord Bot ออกแบบแบบ Mobile-first ด้วย React + Vite และ Android wrapper ผ่าน Capacitor พร้อม Backend API ด้วย Express และ SQLite
+แพลตฟอร์มสำหรับค้นหาและโปรโมท Discord Bot, บ้าน Discord และวิดีโอครีเอเตอร์ มีเว็บไซต์ responsive และแอป Android ที่สร้างจากโปรเจกต์เดียวกันด้วย React, Vite และ Capacitor
 
-## ฟีเจอร์ที่มีในโปรเจกต์
+## ส่วนประกอบ
+- `src/`: เว็บไซต์และ UI ของแอป Android
+- `server/`: Express API สำหรับสมัครสมาชิก/เข้าสู่ระบบ, โปรไฟล์, โพสต์, ไลก์, ความคิดเห็น และติดตาม
+- `.github/workflows/build.yml`: ตรวจ build เว็บไซต์
+- `.github/workflows/build-apk.yml`: สร้าง Android debug APK ผ่าน GitHub Actions
 
-- Dashboard แบบ Responsive สำหรับมือถือและเดสก์ท็อป
-- สมัครสมาชิก / เข้าสู่ระบบ ด้วย bcrypt และ JWT
-- เรียกคืนเซสชันขณะเปิดแท็บเดิม และออกจากระบบ
-- จัดเก็บรายการบอตแยกตามบัญชีผ่าน Backend API
-- จำกัดแพ็กเกจ Free ที่ 1 บอตต่อบัญชี โดยตรวจสอบฝั่ง Backend
-- แพ็กเกจ Premium มีโควตาเริ่มต้น 10 บอต แต่ยังไม่มีระบบชำระเงินหรือเปิดแพ็กเกจอัตโนมัติ
-- เพิ่มและลบบอตจากบัญชีที่เข้าสู่ระบบ
-- แก้ไขชื่อและอีเมลโปรไฟล์ผ่าน Backend API
-- ธีมมืด/สว่าง สีหลัก และโหมดกระชับ
-- Android APK build ผ่าน GitHub Actions
+## สถานะการเชื่อมต่อจริง
 
-## ข้อจำกัดที่ต้องทราบ
+Frontend ถูกปรับให้ **ไม่แสดงโพสต์ตัวอย่าง** และไม่บันทึกการโต้ตอบแบบจำลองอีกต่อไป ระบบโซเชียลจะใช้ API และฐานข้อมูลจริงเมื่อกำหนด `VITE_API_URL` เป็น URL HTTPS ของ Backend ที่ deploy แล้ว
 
-แอปนี้จัดการ **รายการและข้อมูลของบอต** และตรวจโควตา Free/Premium เบื้องต้น แต่ยังไม่ได้รัน Discord bot process, อ่านสถานะออนไลน์แบบสด, จัดเก็บ/ใช้ Discord Bot Token, เชิญบอตเข้า Discord, push notifications, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน หรือระบบชำระเงินและเปิดใช้งาน Premium อัตโนมัติ
+Backend ใช้ SQLite โดยค่าเริ่มต้น จึงต้อง deploy บนโฮสต์ที่มี persistent volume หรือเปลี่ยนเป็นฐานข้อมูล managed ที่เก็บข้อมูลถาวร ก่อนเปิดให้ใช้งานจริงระหว่างหลายบัญชี ห้ามใช้พื้นที่ไฟล์ชั่วคราวของ serverless สำหรับ SQLite
 
-ข้อมูลบอตตัวอย่างที่แสดงก่อนเข้าสู่ระบบเป็นข้อมูลจำลองเท่านั้น เมื่อเข้าสู่ระบบ รายการจะโหลดจาก Backend
+## Deploy Backend
 
-## สร้าง APK
+1. Deploy โฟลเดอร์ `server/` เป็น Node.js service (Node 20+).
+2. กำหนด Environment Variables:
+   - `PORT`: ผู้ให้บริการมักกำหนดให้อัตโนมัติ
+   - `JWT_SECRET`: สุ่ม secret อย่างน้อย 32 ตัวอักษร
+   - `DATABASE_PATH`: ตำแหน่งไฟล์ SQLite บน persistent volume เช่น `/data/data.sqlite`
+   - `CLIENT_ORIGIN`: `https://to-discord-bot.vercel.app,capacitor://localhost,https://localhost`
+3. ตรวจสอบ `https://<backend-domain>/api/health` ต้องตอบ JSON ที่มี `"status":"ok"`.
+4. ใน GitHub → Settings → Secrets and variables → Actions → Variables เพิ่ม `VITE_API_URL` เป็น URL HTTPS ของ Backend แล้ว redeploy เว็บไซต์ Vercel และสร้าง APK ใหม่
 
-1. เปิดแท็บ [GitHub Actions](https://github.com/chloerangersonic0909-cmd/-to-discord-bot/actions)
-2. เลือก workflow **Build Android APK**
-3. กด **Run workflow** และรอให้ Job สำเร็จ
-4. เปิดรายการ run ที่สำเร็จ แล้วดาวน์โหลด Artifact ชื่อ **TO-Discord-BOT-debug-APK**
-5. แตกไฟล์ ZIP เพื่อรับไฟล์ `app-debug.apk`
+ห้าม commit `.env`, JWT secret หรือฐานข้อมูลขึ้น GitHub
 
-Artifact จาก GitHub Actions เก็บไว้ 14 วัน และเป็น **debug APK** ไม่ใช่ APK ที่เซ็นสำหรับเผยแพร่บน Play Store
+## สร้าง Android APK
 
-## ตั้งค่า Backend
+เปิด [GitHub Actions](https://github.com/chloerangersonic0909-cmd/-to-discord-bot/actions) → workflow **Build Android APK** → Run workflow หรือรอ workflow จากการ push สำเร็จ จากนั้นดาวน์โหลด artifact `TO-Discord-BOT-debug-APK` และแตก ZIP เพื่อรับ `app-debug.apk`. Debug APK เหมาะกับการทดสอบ ไม่ใช่ไฟล์เซ็นสำหรับ Play Store
 
-ต้องใช้ Node.js 20 ขึ้นไป และฐานข้อมูล SQLite แบบ persistent บนโฮสต์ที่รองรับแอป Node.js
-
-```bash
-cd server
-npm install
-cp .env.example .env
-```
-
-ตั้งค่า `JWT_SECRET` ให้เป็นค่าสุ่มลับยาวอย่างน้อย 32 ตัวอักษร, ตั้ง `CLIENT_ORIGIN` เป็น URL frontend ที่ใช้งานจริง (คั่นหลาย origin ด้วย comma ได้) และตั้ง `DATABASE_PATH` ไปยังพื้นที่จัดเก็บที่ไม่ถูกลบเมื่อรีสตาร์ต จากนั้นรัน:
-
-```bash
-npm start
-```
-
-ตรวจสุขภาพ API ได้ที่ `/api/health` ต้องเปิด HTTPS เมื่อใช้งานจริง และห้าม commit ไฟล์ `.env` หรือฐานข้อมูลขึ้น repository
-
-## เชื่อม APK กับ Backend
-
-ใน GitHub repository ไปที่ **Settings → Secrets and variables → Actions → Variables** แล้วเพิ่ม Repository variable ชื่อ `VITE_API_URL` เป็น URL HTTPS ของ Backend เช่น `https://api.example.com` จากนั้นเรียก workflow สร้าง APK ใหม่
-
-ถ้าไม่กำหนด `VITE_API_URL` แอปจะใช้ `http://localhost:3001` ซึ่งเหมาะกับการพัฒนาในเครื่องเท่านั้น และจะไม่ชี้ไปยัง Backend ที่ deploy อยู่เมื่อใช้ APK บนมือถือ
-
-## รัน Frontend ในเครื่อง
-
-```bash
-npm install
-npm run dev
-```
-
-## Repository
-
-https://github.com/chloerangersonic0909-cmd/-to-discord-bot
+## ลิงก์
+- เว็บไซต์: https://to-discord-bot.vercel.app
+- Repository: https://github.com/chloerangersonic0909-cmd/-to-discord-bot
+- ผู้พัฒนา: chloerangersonic0909@gmail.com
