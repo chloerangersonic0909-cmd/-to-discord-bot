@@ -27,7 +27,8 @@ function App(){
   const [selectedWeapon,setSelectedWeapon]=useState(0);
   const [sound,setSound]=useState(true);
   const [showSettings,setShowSettings]=useState(false);
-  const [queue,setQueue]=useState(false);\n  const queueTimer=useRef(null);
+  const [queue,setQueue]=useState(false);
+  const queueTimer=useRef(null);
   const [hp,setHp]=useState(100);
   const [ammo,setAmmo]=useState(30);
   const [reserve,setReserve]=useState(120);
@@ -39,7 +40,8 @@ function App(){
   const [toast,setToast]=useState('');
   const [showProfile,setShowProfile]=useState(false);
   const notify=(message)=>{setToast(message);window.setTimeout(()=>setToast(''),2300)};
-  const goPlay=()=>{setQueue(true);queueTimer.current=window.setTimeout(()=>{setQueue(false);setPage('arena');setHp(100);setAmmo(weapons[selectedWeapon].ammo);setReserve(120);setKills(0);setScore(0);setArenaTime(90);setEnemies([{id:1,x:67,y:28,hp:100},{id:2,x:80,y:61,hp:100},{id:3,x:42,y:70,hp:100}]);},1100)};\n  const cancelQueue=()=>{if(queueTimer.current)window.clearTimeout(queueTimer.current);queueTimer.current=null;setQueue(false)};
+  const goPlay=()=>{setQueue(true);queueTimer.current=window.setTimeout(()=>{setQueue(false);setPage('arena');setHp(100);setAmmo(weapons[selectedWeapon].ammo);setReserve(120);setKills(0);setScore(0);setArenaTime(90);setEnemies([{id:1,x:67,y:28,hp:100},{id:2,x:80,y:61,hp:100},{id:3,x:42,y:70,hp:100}]);},1100)};
+  const cancelQueue=()=>{if(queueTimer.current)window.clearTimeout(queueTimer.current);queueTimer.current=null;setQueue(false)};
   const leaveMatch=()=>{setPage('lobby');setCoins(c=>c+Math.max(0,kills*25));setXp(x=>x+Math.max(10,kills*18));notify('สรุปผลแมตช์แล้ว รับรางวัลตามผลงาน!')};
   const shoot=()=>{if(page!=='arena')return;if(ammo<=0){notify('กระสุนหมดแล้ว กดเติมกระสุน');return;}setAmmo(a=>a-1);setScore(s=>s+10);setEnemies(current=>{if(!current.length)return current;const target=current[0];const updated={...target,hp:target.hp-50};if(updated.hp<=0){setKills(k=>k+1);setMissionsState(m=>m.map(x=>x.id===1?{...x,progress:Math.min(x.total,x.progress+1)}:x));return [...current.slice(1),{id:Date.now(),x:25+Math.random()*55,y:22+Math.random()*55,hp:100}];}return [updated,...current.slice(1)];});};
   const reload=()=>{const need=weapons[selectedWeapon].ammo-ammo;if(need<=0){notify('กระสุนเต็มแล้ว');return;}if(reserve<=0){notify('กระสุนสำรองหมด');return;}const amount=Math.min(need,reserve);setAmmo(a=>a+amount);setReserve(r=>r-amount);notify('เติมกระสุนแล้ว');};
